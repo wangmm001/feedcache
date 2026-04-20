@@ -9,4 +9,5 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+.tranco/
 .tranco-cache/
