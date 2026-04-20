@@ -15,3 +15,14 @@ def deterministic_gzip(src_bytes: bytes, dest: Path) -> None:
     tmp = dest.with_suffix(dest.suffix + ".tmp")
     tmp.write_bytes(data)
     os.replace(tmp, dest)
+
+
+def write_if_changed(content: bytes, dest: Path) -> bool:
+    dest = Path(dest)
+    if dest.exists() and dest.read_bytes() == content:
+        return False
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    tmp.write_bytes(content)
+    os.replace(tmp, dest)
+    return True

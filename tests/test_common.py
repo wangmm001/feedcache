@@ -1,7 +1,7 @@
 import gzip
 import re
 
-from feedcache.common import deterministic_gzip, today_utc_date
+from feedcache.common import deterministic_gzip, today_utc_date, write_if_changed
 
 
 def test_today_utc_date_format():
@@ -18,3 +18,24 @@ def test_deterministic_gzip_same_input_same_output(tmp_path):
     deterministic_gzip(data, b)
     assert a.read_bytes() == b.read_bytes(), "byte-identical output required"
     assert gzip.decompress(a.read_bytes()) == data
+
+
+def test_write_if_changed_writes_new(tmp_path):
+    dest = tmp_path / "f"
+    assert write_if_changed(b"abc", dest) is True
+    assert dest.read_bytes() == b"abc"
+
+
+def test_write_if_changed_skips_unchanged(tmp_path):
+    dest = tmp_path / "f"
+    write_if_changed(b"abc", dest)
+    mtime1 = dest.stat().st_mtime_ns
+    assert write_if_changed(b"abc", dest) is False
+    assert dest.stat().st_mtime_ns == mtime1
+
+
+def test_write_if_changed_updates_on_diff(tmp_path):
+    dest = tmp_path / "f"
+    write_if_changed(b"abc", dest)
+    assert write_if_changed(b"def", dest) is True
+    assert dest.read_bytes() == b"def"
