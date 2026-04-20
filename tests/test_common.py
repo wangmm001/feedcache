@@ -1,7 +1,8 @@
 import gzip
 import re
+from unittest.mock import MagicMock
 
-from feedcache.common import deterministic_gzip, today_utc_date, update_current, write_if_changed
+from feedcache.common import deterministic_gzip, download_to, today_utc_date, update_current, write_if_changed
 
 
 def test_today_utc_date_format():
@@ -53,3 +54,39 @@ def test_update_current_picks_latest_filename(tmp_path):
 def test_update_current_returns_none_when_no_match(tmp_path):
     (tmp_path / "unrelated.txt").write_bytes(b"x")
     assert update_current(tmp_path, "????-??-??.csv.gz", "current.csv.gz") is None
+
+
+def test_download_to_writes_streamed_chunks(tmp_path, monkeypatch):
+    chunks = [b"hello ", b"world"]
+
+    class FakeResp:
+        status_code = 200
+        def raise_for_status(self): pass
+        def iter_content(self, chunk_size): yield from chunks
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    import feedcache.common as common
+    monkeypatch.setattr(common.requests, "get", lambda *a, **kw: FakeResp())
+
+    dest = tmp_path / "out.bin"
+    result = download_to("https://example.com/x", dest)
+    assert result == dest
+    assert dest.read_bytes() == b"hello world"
+
+
+def test_download_to_raises_on_http_error(tmp_path, monkeypatch):
+    class FakeResp:
+        def raise_for_status(self):
+            import requests
+            raise requests.HTTPError("500 Server Error")
+        def iter_content(self, chunk_size): return iter([])
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    import feedcache.common as common
+    monkeypatch.setattr(common.requests, "get", lambda *a, **kw: FakeResp())
+
+    import requests
+    with __import__("pytest").raises(requests.HTTPError):
+        download_to("https://example.com/x", tmp_path / "out.bin")

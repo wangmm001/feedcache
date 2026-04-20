@@ -5,6 +5,8 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
+
 
 def today_utc_date() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -41,4 +43,18 @@ def update_current(directory: Path, pattern: str, current_name: str) -> Path | N
     latest = matches[-1]
     dest = directory / current_name
     shutil.copyfile(latest, dest)
+    return dest
+
+
+def download_to(url: str, dest: Path, timeout: int = 120) -> Path:
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    with requests.get(url, stream=True, timeout=timeout) as r:
+        r.raise_for_status()
+        with open(tmp, "wb") as f:
+            for chunk in r.iter_content(chunk_size=1 << 16):
+                if chunk:
+                    f.write(chunk)
+    os.replace(tmp, dest)
     return dest
