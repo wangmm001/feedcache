@@ -1,5 +1,7 @@
+import fnmatch
 import gzip
 import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,3 +28,17 @@ def write_if_changed(content: bytes, dest: Path) -> bool:
     tmp.write_bytes(content)
     os.replace(tmp, dest)
     return True
+
+
+def update_current(directory: Path, pattern: str, current_name: str) -> Path | None:
+    directory = Path(directory)
+    matches = sorted(
+        p for p in directory.iterdir()
+        if p.is_file() and fnmatch.fnmatch(p.name, pattern)
+    )
+    if not matches:
+        return None
+    latest = matches[-1]
+    dest = directory / current_name
+    shutil.copyfile(latest, dest)
+    return dest
