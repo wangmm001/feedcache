@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "feedcache"
+version = "0.1.0"
+description = "Mirror public internet top-list and metadata feeds into git-backed data repositories."
+requires-python = ">=3.11"
+authors = [{ name = "wangmm" }]
+license = { text = "MIT" }
+dependencies = [
+    "requests>=2.31",
+    "tranco>=0.8",
+    "cloudflare>=3.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7",
+    "pytest-mock>=3",
+]
+
+[project.scripts]
+feedcache = "feedcache.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["feedcache"]
