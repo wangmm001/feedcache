@@ -12,7 +12,6 @@ license = { text = "MIT" }
 dependencies = [
     "requests>=2.31",
     "tranco>=0.8",
-    "cloudflare>=3.0",
 ]
 
 [project.optional-dependencies]
