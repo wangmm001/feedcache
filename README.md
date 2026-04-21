@@ -15,6 +15,12 @@ Three repos are populated by this codebase via a shared reusable workflow:
 | Public Suffix List | [`wangmm001/public-suffix-list-cache`](https://github.com/wangmm001/public-suffix-list-cache) | `https://publicsuffix.org/list/public_suffix_list.dat` |
 | Cloud IP ranges (AWS/GCP/Azure/Cloudflare) | [`wangmm001/cloud-ip-ranges-cache`](https://github.com/wangmm001/cloud-ip-ranges-cache) | AWS/GCP/Cloudflare direct JSON+TXT, Azure via HTML scrape |
 
+One derived aggregate (not a mirror — a daily full-outer-join across the five domain-providing sources above):
+
+| Source | Data repo | Upstream |
+|---|---|---|
+| Cross-list top-domains aggregate | [`wangmm001/top-domains-aggregate`](https://github.com/wangmm001/top-domains-aggregate) | Derived from umbrella + tranco + majestic + cloudflare-radar + crux `current` files |
+
 One companion repo is a **strict GitHub fork mirror** (not populated by this code — it just replays an upstream repo):
 
 | Source | Data repo | Upstream | How it works |
