@@ -198,14 +198,18 @@ Any exception at steps 1–4 aborts before any file is written; the `data/` tree
 
 **Specific failure classes and behavior:**
 
+`run()` distinguishes two failure modes:
+- **Anticipated, no data reasonable to publish yet** → `return False` (no exception). Only the empty-`releases` case qualifies.
+- **Unanticipated / indicates upstream change or transient outage** → exception propagates. The feedcache CLI exits non-zero either way, so both cause the GitHub Actions step to fail and prevent a commit; propagation just gives the runner logs a full traceback for debugging.
+
 | Failure | Behavior |
 |---|---|
-| `graphinfo.json` 5xx or non-JSON | `raise_for_status` / `JSONDecodeError` → `run` returns False |
-| `releases` empty array | explicit check → `RuntimeError("no releases in graphinfo.json")` → False |
-| `host-ranks` 404 (release listed but file not yet uploaded) | `raise_for_status` → False, cron retries tomorrow |
-| Header mismatch (upstream schema change) | assertion in §7 → False, human investigates |
-| Fewer than 1,000,000 rows (tiny release or truncated upload) | writes whatever it got, no error (rank column truncated to actual max) |
-| Broken line (not 5 tab-separated fields) | `RuntimeError` → False |
+| `graphinfo.json` 5xx or non-JSON | `raise_for_status` / `JSONDecodeError` propagates |
+| `releases` empty array | explicit check → `return False` (no write) |
+| `host-ranks` or `domain-ranks` 404 (release listed but file not yet uploaded) | `raise_for_status` → `HTTPError` propagates; cron retries next scheduled run |
+| Header mismatch (upstream schema change) | `RuntimeError("unexpected ranks header: ...")` propagates — human investigates |
+| Fewer than 1,000,000 rows (tiny release or truncated upload) | writes whatever it got, no error (rank column truncates to actual max) |
+| Broken line (not 5 tab-separated fields) | `RuntimeError("malformed ranks line N: ...")` propagates |
 
 ## 9. Testing
 
