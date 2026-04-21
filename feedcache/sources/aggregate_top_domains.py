@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+from publicsuffixlist import PublicSuffixList
 
 from feedcache.common import (
     deterministic_gzip,
@@ -14,40 +15,54 @@ from feedcache.common import (
 
 REQUEST_TIMEOUT = 180
 
-# (list_name, url, parser_key)
+PSL_URL = "https://raw.githubusercontent.com/wangmm001/public-suffix-list-cache/main/data/current.dat.gz"
+
+# (list_name, url, parser_key)  — unchanged
 SOURCES: list[tuple[str, str, str]] = [
-    (
-        "umbrella",
-        "https://raw.githubusercontent.com/wangmm001/umbrella-top1m-cache/main/data/current.csv.gz",
-        "rank_domain_noheader",
-    ),
-    (
-        "tranco",
-        "https://raw.githubusercontent.com/wangmm001/tranco-top1m-cache/main/data/current.csv.gz",
-        "rank_domain_noheader",
-    ),
-    (
-        "majestic",
-        "https://raw.githubusercontent.com/wangmm001/majestic-million-cache/main/data/current.csv.gz",
-        "majestic",
-    ),
-    (
-        "cloudflare-radar",
-        "https://raw.githubusercontent.com/wangmm001/cloudflare-radar-rankings-cache/main/data/current/top-1000000.csv.gz",
-        "cloudflare",
-    ),
-    (
-        "crux",
-        "https://raw.githubusercontent.com/wangmm001/crux-top-lists-mirror/main/data/global/current.csv.gz",
-        "crux",
-    ),
+    ("umbrella",
+     "https://raw.githubusercontent.com/wangmm001/umbrella-top1m-cache/main/data/current.csv.gz",
+     "rank_domain_noheader"),
+    ("tranco",
+     "https://raw.githubusercontent.com/wangmm001/tranco-top1m-cache/main/data/current.csv.gz",
+     "rank_domain_noheader"),
+    ("majestic",
+     "https://raw.githubusercontent.com/wangmm001/majestic-million-cache/main/data/current.csv.gz",
+     "majestic"),
+    ("cloudflare-radar",
+     "https://raw.githubusercontent.com/wangmm001/cloudflare-radar-rankings-cache/main/data/current/top-1000000.csv.gz",
+     "cloudflare"),
+    ("crux",
+     "https://raw.githubusercontent.com/wangmm001/crux-top-lists-mirror/main/data/global/current.csv.gz",
+     "crux"),
 ]
 
-# Unordered lists get this worst-case rank
 UNORDERED_RANK = 1_000_000
 
 
-def _parse_rank_domain_noheader(text: str) -> dict[str, int]:
+def _load_psl() -> PublicSuffixList:
+    resp = requests.get(PSL_URL, timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    psl_bytes = gzip.decompress(resp.content)
+    # PublicSuffixList accepts a source iterable of lines
+    return PublicSuffixList(source=io.BytesIO(psl_bytes))
+
+
+def _normalize(host: str, psl: PublicSuffixList) -> str:
+    """Reduce host to registrable domain (eTLD+1). If host is itself a public suffix
+    or otherwise un-reducible, fall back to the original host."""
+    host = (host or "").strip().lower()
+    if not host:
+        return ""
+    if host.startswith("www."):
+        host = host[4:]
+    try:
+        registrable = psl.privatesuffix(host)
+    except Exception:
+        return host
+    return registrable or host
+
+
+def _parse_rank_domain_noheader(text: str, psl: PublicSuffixList) -> dict[str, int]:
     out: dict[str, int] = {}
     for row in csv.reader(io.StringIO(text)):
         if len(row) >= 2:
@@ -55,57 +70,51 @@ def _parse_rank_domain_noheader(text: str) -> dict[str, int]:
                 rank = int(row[0])
             except ValueError:
                 continue
-            d = row[1].strip().lower()
-            if d and d not in out:
-                out[d] = rank  # keep first (best) rank if duplicate
+            d = _normalize(row[1], psl)
+            if d and (d not in out or rank < out[d]):
+                out[d] = rank
     return out
 
 
-def _parse_majestic(text: str) -> dict[str, int]:
+def _parse_majestic(text: str, psl: PublicSuffixList) -> dict[str, int]:
     out: dict[str, int] = {}
     reader = csv.DictReader(io.StringIO(text))
     for row in reader:
         try:
-            rank = int(row.get("GlobalRank", "").strip())
+            rank = int((row.get("GlobalRank") or "").strip())
         except ValueError:
             continue
-        d = (row.get("Domain") or "").strip().lower()
-        if d and d not in out:
+        d = _normalize(row.get("Domain") or "", psl)
+        if d and (d not in out or rank < out[d]):
             out[d] = rank
     return out
 
 
-def _parse_cloudflare(text: str) -> dict[str, int]:
-    """Cloudflare top-1M bucket is unordered; all members get rank=UNORDERED_RANK."""
+def _parse_cloudflare(text: str, psl: PublicSuffixList) -> dict[str, int]:
     out: dict[str, int] = {}
     reader = csv.DictReader(io.StringIO(text))
     for row in reader:
-        d = (row.get("domain") or "").strip().lower()
+        d = _normalize(row.get("domain") or "", psl)
         if d:
             out[d] = UNORDERED_RANK
     return out
 
 
-def _parse_crux(text: str) -> dict[str, int]:
-    """CrUX `rank` is a magnitude bucket (1000/10000/100000/1000000), used as-is."""
+def _parse_crux(text: str, psl: PublicSuffixList) -> dict[str, int]:
     out: dict[str, int] = {}
     reader = csv.DictReader(io.StringIO(text))
     for row in reader:
         origin = (row.get("origin") or "").strip()
         try:
-            rank = int(row.get("rank", "").strip())
+            rank = int((row.get("rank") or "").strip())
         except ValueError:
             continue
         if not origin:
             continue
-        host = urlparse(origin).hostname
-        if not host:
-            continue
-        host = host.lower()
-        if host.startswith("www."):
-            host = host[4:]
-        if host and (host not in out or rank < out[host]):
-            out[host] = rank  # keep best (smallest) rank if duplicate host across origins
+        host = urlparse(origin).hostname or ""
+        d = _normalize(host, psl)
+        if d and (d not in out or rank < out[d]):
+            out[d] = rank
     return out
 
 
@@ -117,25 +126,24 @@ PARSERS = {
 }
 
 
-def _fetch_and_parse(url: str, parser_key: str) -> dict[str, int]:
+def _fetch_and_parse(url: str, parser_key: str, psl: PublicSuffixList) -> dict[str, int]:
     resp = requests.get(url, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     text = gzip.decompress(resp.content).decode("utf-8", errors="replace")
-    return PARSERS[parser_key](text)
+    return PARSERS[parser_key](text, psl)
 
 
 def run(out_dir: str) -> bool:
-    # Fetch all 5 sources; any failure aborts before any file is written.
+    psl = _load_psl()
+
     per_source: dict[str, dict[str, int]] = {}
     for name, url, parser_key in SOURCES:
-        per_source[name] = _fetch_and_parse(url, parser_key)
+        per_source[name] = _fetch_and_parse(url, parser_key, psl)
 
-    # Build per-domain (sources_hit, score).
-    # domain -> (list of source names, accumulated score)
     agg: dict[str, tuple[list[str], float]] = {}
     for name, domain_rank in per_source.items():
         for d, rank in domain_rank.items():
-            if rank <= 0:  # guard against pathological data
+            if rank <= 0:
                 continue
             contrib = 1.0 / rank
             if d in agg:
@@ -145,7 +153,6 @@ def run(out_dir: str) -> bool:
             else:
                 agg[d] = ([name], contrib)
 
-    # Sort: count DESC, score DESC, domain ASC
     rows = sorted(
         agg.items(),
         key=lambda kv: (-len(kv[1][0]), -kv[1][1], kv[0]),

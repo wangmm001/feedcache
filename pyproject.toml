@@ -12,6 +12,7 @@ license = { text = "MIT" }
 dependencies = [
     "requests>=2.31",
     "tranco>=0.8",
+    "publicsuffixlist>=0.10",
 ]
 
 [project.optional-dependencies]
