@@ -87,7 +87,7 @@ feedcache/
 │   └── test_cli.py
 └── .github/
     └── workflows/
-        ├── reusable-snapshot.yml   # called by all 7 feedcache-populated data repos
+        ├── reusable-snapshot.yml   # called by all 8 feedcache-populated data repos
         └── test.yml                # runs pytest on every push / PR
 ```
 
