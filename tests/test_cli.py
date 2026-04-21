@@ -12,6 +12,7 @@ def test_cli_help():
     assert "umbrella" in result.stdout
     assert "tranco" in result.stdout
     assert "cloudflare-radar" in result.stdout
+    assert "common-crawl-ranks" in result.stdout
     assert "majestic" in result.stdout
     assert "public-suffix-list" in result.stdout
     assert "cloud-ip-ranges" in result.stdout

@@ -2,13 +2,14 @@ import argparse
 import sys
 from typing import Callable, Dict
 
-from feedcache.sources import aggregate_top_domains, cloud_ip_ranges, cloudflare_radar, majestic, public_suffix_list, tranco, umbrella
+from feedcache.sources import aggregate_top_domains, cloud_ip_ranges, cloudflare_radar, common_crawl_ranks, majestic, public_suffix_list, tranco, umbrella
 
 SOURCES: Dict[str, Callable[[str], bool]] = {
     "aggregate-top-domains": aggregate_top_domains.run,
     "umbrella": umbrella.run,
     "tranco": tranco.run,
     "cloudflare-radar": cloudflare_radar.run,
+    "common-crawl-ranks": common_crawl_ranks.run,
     "majestic": majestic.run,
     "public-suffix-list": public_suffix_list.run,
     "cloud-ip-ranges": cloud_ip_ranges.run,
