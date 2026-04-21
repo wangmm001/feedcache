@@ -92,18 +92,20 @@ def test_aggregate_has_score_column_and_sorts_by_count_then_score(tmp_path, monk
     rows = _read_output(tmp_path)
     assert set(rows[0].keys()) == {"domain", "count", "score", "lists"}
 
-    # google.com in all 5 → score 3.001001 (same as v2)
+    # google.com in all 5 (RRF K=60):
+    # 3/(60+1) + 1/(60+1000000) + 1/(60+1000) ≈ 0.050125
     first = rows[0]
     assert first["domain"] == "google.com"
     assert first["count"] == "5"
-    assert first["score"] == "3.001001"
+    assert first["score"] == "0.050125"
     assert first["lists"] == "cloudflare-radar|crux|majestic|tranco|umbrella"
 
-    # youtube.com in 4 (not majestic)
+    # youtube.com in 4 (not majestic):
+    # 1/62 + 1/63 + 1/1000060 + 1/1060 ≈ 0.032946
     second = rows[1]
     assert second["domain"] == "youtube.com"
     assert second["count"] == "4"
-    assert second["score"] == "0.834334"
+    assert second["score"] == "0.032946"
 
 
 def test_aggregate_within_count_tier_higher_score_comes_first(tmp_path, monkeypatch):

@@ -38,6 +38,11 @@ SOURCES: list[tuple[str, str, str]] = [
 
 UNORDERED_RANK = 1_000_000
 
+# Reciprocal-rank-fusion smoothing constant. Score contribution per list is
+# 1/(RRF_K + rank), which damps rank-1 dominance (score ratio between rank 1
+# and rank 1000 is ~18x at K=60 instead of 1000x at K=0).
+RRF_K = 60
+
 
 def _load_psl() -> PublicSuffixList:
     resp = requests.get(PSL_URL, timeout=REQUEST_TIMEOUT)
@@ -145,7 +150,7 @@ def run(out_dir: str) -> bool:
         for d, rank in domain_rank.items():
             if rank <= 0:
                 continue
-            contrib = 1.0 / rank
+            contrib = 1.0 / (RRF_K + rank)
             if d in agg:
                 sources_list, score = agg[d]
                 sources_list.append(name)
