@@ -4,11 +4,19 @@ Mirrors public internet top-list / metadata feeds into git-backed data repositor
 
 ## Data repositories
 
+Three repos are populated by this codebase via a shared reusable workflow:
+
 | Source | Data repo | Upstream |
 |---|---|---|
 | Cisco Umbrella Top 1M | [`wangmm001/umbrella-top1m-cache`](https://github.com/wangmm001/umbrella-top1m-cache) | `https://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip` |
 | Tranco Top 1M | [`wangmm001/tranco-top1m-cache`](https://github.com/wangmm001/tranco-top1m-cache) | `https://tranco-list.eu/` |
-| Cloudflare Radar rank buckets | [`wangmm001/cloudflare-radar-rankings-cache`](https://github.com/wangmm001/cloudflare-radar-rankings-cache) | Cloudflare Radar API `radar/ranking/top` |
+| Cloudflare Radar rank buckets | [`wangmm001/cloudflare-radar-rankings-cache`](https://github.com/wangmm001/cloudflare-radar-rankings-cache) | Cloudflare Radar API `/radar/datasets/ranking_top_<N>` |
+
+One companion repo is a **strict GitHub fork mirror** (not populated by this code — it just replays an upstream repo):
+
+| Source | Data repo | Upstream | How it works |
+|---|---|---|---|
+| Chrome UX Report (CrUX) Top 1M | [`wangmm001/crux-top-lists-mirror`](https://github.com/wangmm001/crux-top-lists-mirror) | [`zakird/crux-top-lists`](https://github.com/zakird/crux-top-lists) | GitHub fork with a daily workflow that runs `gh repo sync` against upstream — tree-level 1:1 mirror. |
 
 ## Local usage
 
