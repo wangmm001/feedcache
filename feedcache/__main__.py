@@ -2,12 +2,13 @@ import argparse
 import sys
 from typing import Callable, Dict
 
-from feedcache.sources import cloudflare_radar, tranco, umbrella
+from feedcache.sources import cloudflare_radar, majestic, tranco, umbrella
 
 SOURCES: Dict[str, Callable[[str], bool]] = {
     "umbrella": umbrella.run,
     "tranco": tranco.run,
     "cloudflare-radar": cloudflare_radar.run,
+    "majestic": majestic.run,
 }
 
 
