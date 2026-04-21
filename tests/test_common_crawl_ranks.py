@@ -150,3 +150,34 @@ def test_truncate_and_transform_host(monkeypatch, tmp_path):
     assert text[1] == "1,3.75E7,5,0.0049,www.facebook.com"
     assert text[2] == "2,3.73E7,4,0.0064,fonts.googleapis.com"
     assert text[3] == "3,3.46E7,2,0.0083,www.google.com"
+
+
+_FAKE_DOMAIN_ROWS = [
+    ("1", "9.1E7", "2", "0.005", "com.google"),
+    ("2", "9.0E7", "1", "0.006", "com.facebook"),
+    ("3", "8.5E7", "3", "0.004", "org.wikipedia"),
+]
+
+
+def test_truncate_and_transform_domain(monkeypatch, tmp_path):
+    from feedcache.sources import common_crawl_ranks as m
+
+    monkeypatch.setattr(m, "TOP_N", 3)
+
+    _patch_http(monkeypatch, {
+        m.GRAPHINFO_URL: lambda url, **kw: _FakeResponse(
+            content=_FAKE_GRAPHINFO_BYTES, json_data=_FAKE_GRAPHINFO
+        ),
+        "domain-ranks.txt.gz": lambda url, **kw: _FakeResponse(
+            raw_bytes=_build_ranks_gz(_FAKE_DOMAIN_ROWS)
+        ),
+    })
+
+    domain_bytes = m._download_ranks("cc-main-2026-jan-feb-mar", "domain", "domain")
+    text = domain_bytes.decode("utf-8").splitlines()
+
+    assert text[0] == "rank,harmonicc_val,pr_pos,pr_val,domain"
+    assert len(text) == 4
+    assert text[1] == "1,9.1E7,2,0.005,google.com"
+    assert text[2] == "2,9.0E7,1,0.006,facebook.com"
+    assert text[3] == "3,8.5E7,3,0.004,wikipedia.org"
