@@ -6,6 +6,8 @@ import pytest
 def _make_ok_response(payload):
     """Return a MagicMock that behaves like a successful requests.Response."""
     r = MagicMock()
+    r.ok = True
+    r.status_code = 200
     r.raise_for_status.return_value = None
     r.json.return_value = payload
     return r
@@ -66,17 +68,17 @@ def test_cloudflare_radar_partial_failure_no_commit(tmp_path, monkeypatch):
     def flaky_get(url, headers=None, params=None, timeout=None):
         call_count["n"] += 1
         if call_count["n"] == 3:  # third bucket fails
-            import requests
             r = MagicMock()
-            r.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
+            r.ok = False
+            r.status_code = 500
+            r.text = '{"errors":[{"code":1,"message":"simulated"}]}'
             return r
         return _make_ok_response({"result": {"top_0": [], "limit": params["limit"]}})
 
     import feedcache.sources.cloudflare_radar as cr
     monkeypatch.setattr(cr.requests, "get", flaky_get)
 
-    import requests
-    with pytest.raises(requests.HTTPError):
+    with pytest.raises(RuntimeError, match="Radar API 500"):
         cr.run(str(tmp_path))
 
     # Nothing persisted — neither dated dir nor current/

@@ -28,7 +28,10 @@ def run(out_dir: str) -> bool:
             params={"limit": n},
             timeout=REQUEST_TIMEOUT,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            raise RuntimeError(
+                f"Radar API {resp.status_code} for limit={n}: {resp.text[:800]}"
+            )
         payloads[n] = json.dumps(resp.json(), sort_keys=True, ensure_ascii=False).encode("utf-8")
 
     out = Path(out_dir)
