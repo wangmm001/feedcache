@@ -308,13 +308,13 @@ These are issues discovered during implementation and how each was resolved:
 - **No historical backfill for Umbrella, Tranco, Majestic, or Cloudflare Radar.** Repositories contain data from the first cron run onward. Historical Umbrella and Cloudflare data is not available upstream; Tranco historical access (`/list/date/YYYYMMDD/full`) and Majestic historical data were out of scope.
 - **No CrUX BigQuery direct access.** CrUX monthly data comes via `zakird/crux-top-lists` fork sync. The feedcache project does not query BigQuery directly.
 - **No IDN reconciliation.** Punycode (`xn--...`) and Unicode domain representations appear inconsistently across sources. No normalization is applied; the same domain may appear as separate entries.
-- **No time-series aggregate (v2.3).** The `top-domains-aggregate` repo stores one snapshot per day but no trend analysis or month-over-month comparison is implemented.
+- **No time-series aggregate (v2.4).** The `top-domains-aggregate` repo stores one snapshot per day but no trend analysis or month-over-month comparison is implemented.
 
 ---
 
 ## 9. Future extensions (not implemented)
 
-- **v2.3 top-domains-trends.** Monthly snapshot archive of the aggregate output; CrUX-only monthly backfill from 2025-01 using `crux-top-lists-mirror` historical data.
+- **v2.4 top-domains-trends.** Monthly snapshot archive of the aggregate output; CrUX-only monthly backfill from 2025-01 using `crux-top-lists-mirror` historical data.
 - **Tranco historical backfill.** The Tranco API supports `/list/date/YYYYMMDD/full` for past dates; a one-time backfill pass could populate the cache back to a chosen start date.
 - **Additional sources under consideration:** CISA Known Exploited Vulnerabilities (KEV), OSV vulnerability data, `hugovk/top-pypi-packages` fork, RIR (ARIN/RIPE/APNIC/LACNIC/AfriNIC) IP allocation data, abuse.ch blocklists.
 - **More frequent cloud-IP-ranges polling.** A 6-hourly cron for `cloud-ip-ranges-cache` would reduce the AWS syncToken lag.
