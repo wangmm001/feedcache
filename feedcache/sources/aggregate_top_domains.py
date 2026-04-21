@@ -43,42 +43,59 @@ SOURCES: list[tuple[str, str, str]] = [
     ),
 ]
 
+# Unordered lists get this worst-case rank
+UNORDERED_RANK = 1_000_000
 
-def _parse_rank_domain_noheader(text: str) -> set[str]:
-    out: set[str] = set()
+
+def _parse_rank_domain_noheader(text: str) -> dict[str, int]:
+    out: dict[str, int] = {}
     for row in csv.reader(io.StringIO(text)):
         if len(row) >= 2:
+            try:
+                rank = int(row[0])
+            except ValueError:
+                continue
             d = row[1].strip().lower()
-            if d:
-                out.add(d)
+            if d and d not in out:
+                out[d] = rank  # keep first (best) rank if duplicate
     return out
 
 
-def _parse_majestic(text: str) -> set[str]:
-    out: set[str] = set()
+def _parse_majestic(text: str) -> dict[str, int]:
+    out: dict[str, int] = {}
     reader = csv.DictReader(io.StringIO(text))
     for row in reader:
+        try:
+            rank = int(row.get("GlobalRank", "").strip())
+        except ValueError:
+            continue
         d = (row.get("Domain") or "").strip().lower()
-        if d:
-            out.add(d)
+        if d and d not in out:
+            out[d] = rank
     return out
 
 
-def _parse_cloudflare(text: str) -> set[str]:
-    out: set[str] = set()
+def _parse_cloudflare(text: str) -> dict[str, int]:
+    """Cloudflare top-1M bucket is unordered; all members get rank=UNORDERED_RANK."""
+    out: dict[str, int] = {}
     reader = csv.DictReader(io.StringIO(text))
     for row in reader:
         d = (row.get("domain") or "").strip().lower()
         if d:
-            out.add(d)
+            out[d] = UNORDERED_RANK
     return out
 
 
-def _parse_crux(text: str) -> set[str]:
-    out: set[str] = set()
+def _parse_crux(text: str) -> dict[str, int]:
+    """CrUX `rank` is a magnitude bucket (1000/10000/100000/1000000), used as-is."""
+    out: dict[str, int] = {}
     reader = csv.DictReader(io.StringIO(text))
     for row in reader:
         origin = (row.get("origin") or "").strip()
+        try:
+            rank = int(row.get("rank", "").strip())
+        except ValueError:
+            continue
         if not origin:
             continue
         host = urlparse(origin).hostname
@@ -87,8 +104,8 @@ def _parse_crux(text: str) -> set[str]:
         host = host.lower()
         if host.startswith("www."):
             host = host[4:]
-        if host:
-            out.add(host)
+        if host and (host not in out or rank < out[host]):
+            out[host] = rank  # keep best (smallest) rank if duplicate host across origins
     return out
 
 
@@ -100,7 +117,7 @@ PARSERS = {
 }
 
 
-def _fetch_and_parse(url: str, parser_key: str) -> set[str]:
+def _fetch_and_parse(url: str, parser_key: str) -> dict[str, int]:
     resp = requests.get(url, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     text = gzip.decompress(resp.content).decode("utf-8", errors="replace")
@@ -108,23 +125,42 @@ def _fetch_and_parse(url: str, parser_key: str) -> set[str]:
 
 
 def run(out_dir: str) -> bool:
-    # Fetch all 5 first; any failure aborts before any file is written.
-    lists: dict[str, set[str]] = {}
+    # Fetch all 5 sources; any failure aborts before any file is written.
+    per_source: dict[str, dict[str, int]] = {}
     for name, url, parser_key in SOURCES:
-        lists[name] = _fetch_and_parse(url, parser_key)
+        per_source[name] = _fetch_and_parse(url, parser_key)
 
-    agg: dict[str, list[str]] = {}
-    for name, domains in lists.items():
-        for d in domains:
-            agg.setdefault(d, []).append(name)
+    # Build per-domain (sources_hit, score).
+    # domain -> (list of source names, accumulated score)
+    agg: dict[str, tuple[list[str], float]] = {}
+    for name, domain_rank in per_source.items():
+        for d, rank in domain_rank.items():
+            if rank <= 0:  # guard against pathological data
+                continue
+            contrib = 1.0 / rank
+            if d in agg:
+                sources_list, score = agg[d]
+                sources_list.append(name)
+                agg[d] = (sources_list, score + contrib)
+            else:
+                agg[d] = ([name], contrib)
 
-    rows = sorted(agg.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    # Sort: count DESC, score DESC, domain ASC
+    rows = sorted(
+        agg.items(),
+        key=lambda kv: (-len(kv[1][0]), -kv[1][1], kv[0]),
+    )
 
     buf = io.StringIO()
     writer = csv.writer(buf, lineterminator="\n")
-    writer.writerow(["domain", "count", "lists"])
-    for domain, src_list in rows:
-        writer.writerow([domain, len(src_list), "|".join(sorted(src_list))])
+    writer.writerow(["domain", "count", "score", "lists"])
+    for domain, (src_list, score) in rows:
+        writer.writerow([
+            domain,
+            len(src_list),
+            f"{score:.6f}",
+            "|".join(sorted(src_list)),
+        ])
     csv_bytes = buf.getvalue().encode("utf-8")
 
     out = Path(out_dir)

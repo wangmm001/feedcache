@@ -19,21 +19,21 @@ def _ok_response(body_bytes: bytes):
     return r
 
 
-# Small fixtures: each source returns a few overlapping domains.
-_FAKE_UMBRELLA = _gzip_bytes("1,google.com\n2,youtube.com\n3,umbrella-only.test\n")
-_FAKE_TRANCO = _gzip_bytes("1,google.com\n2,youtube.com\n3,tranco-only.test\n")
+# Fixtures: include explicit ranks for ordinal sources; CrUX has bucket rank.
+_FAKE_UMBRELLA = _gzip_bytes("1,google.com\n2,youtube.com\n999000,umbrella-only.test\n")
+_FAKE_TRANCO = _gzip_bytes("1,google.com\n3,youtube.com\n500,tranco-only.test\n")
 _FAKE_MAJESTIC = _gzip_bytes(
     "GlobalRank,TldRank,Domain,TLD,RefSubNets,RefIPs\n"
     "1,1,google.com,com,1,1\n"
-    "2,2,github.com,com,1,1\n"
+    "100,1,github.com,com,1,1\n"
 )
 _FAKE_CLOUDFLARE = _gzip_bytes("domain\ngoogle.com\nyoutube.com\n")
 _FAKE_CRUX = _gzip_bytes(
     "origin,rank\n"
     "https://www.google.com,1000\n"
-    "https://youtube.com,1000\n"  # no www. prefix
-    "https://en.wikipedia.org,10000\n"  # subdomain stays as-is
-    ",1000\n"  # empty origin — should be skipped
+    "https://youtube.com,1000\n"
+    "https://en.wikipedia.org,10000\n"
+    ",1000\n"
 )
 
 
@@ -49,7 +49,6 @@ def _install_fake_get(monkeypatch, url_to_body: dict):
 
 def _default_url_map():
     from feedcache.sources.aggregate_top_domains import SOURCES
-    # SOURCES is [(name, url, parser_key)]; build name→url first then map url→body.
     url_by_name = {name: url for name, url, _ in SOURCES}
     return {
         url_by_name["umbrella"]: _FAKE_UMBRELLA,
@@ -64,34 +63,57 @@ def _read_output(tmp_path):
     current = tmp_path / "current.csv.gz"
     assert current.exists()
     text = gzip.decompress(current.read_bytes()).decode("utf-8")
-    reader = csv.DictReader(io.StringIO(text))
-    return [row for row in reader]
+    return list(csv.DictReader(io.StringIO(text)))
 
 
-def test_aggregate_writes_sorted_by_count_desc_then_domain_asc(tmp_path, monkeypatch):
+def test_aggregate_has_score_column_and_sorts_by_count_then_score(tmp_path, monkeypatch):
     from feedcache.sources import aggregate_top_domains
     _install_fake_get(monkeypatch, _default_url_map())
 
     assert aggregate_top_domains.run(str(tmp_path)) is True
 
     rows = _read_output(tmp_path)
-    # google.com is in all 5 lists (umbrella+tranco+majestic+cloudflare+crux) → count=5
-    # youtube.com in 4 (not majestic) → count=4
-    # github.com in 1 (majestic only), en.wikipedia.org in 1 (crux only),
-    # umbrella-only.test in 1, tranco-only.test in 1
+    # Header check: 4 cols including 'score'
+    assert set(rows[0].keys()) == {"domain", "count", "score", "lists"}
+
+    # google.com in all 5: ranks 1/1/1 (umbrella/tranco/majestic) + 1M (cloudflare) + 1000 (crux)
+    # score = 1 + 1 + 1 + 1e-6 + 1e-3 = 3.001001
     first = rows[0]
     assert first["domain"] == "google.com"
     assert first["count"] == "5"
+    assert first["score"] == "3.001001"
     assert first["lists"] == "cloudflare-radar|crux|majestic|tranco|umbrella"
 
+    # youtube.com in 4 lists (not majestic): umbrella=2, tranco=3, cloudflare=1M, crux=1000
+    # score = 0.5 + 0.333333 + 1e-6 + 1e-3 = 0.834334
     second = rows[1]
     assert second["domain"] == "youtube.com"
     assert second["count"] == "4"
-    assert second["lists"] == "cloudflare-radar|crux|tranco|umbrella"
+    assert second["score"] == "0.834334"
 
-    # Check that lower-count rows are sorted alphabetically among themselves.
-    tail_domains = [r["domain"] for r in rows if r["count"] == "1"]
-    assert tail_domains == sorted(tail_domains), tail_domains
+
+def test_aggregate_within_count_tier_higher_score_comes_first(tmp_path, monkeypatch):
+    """Two domains with same count but different real ranks — higher-score should win."""
+    from feedcache.sources import aggregate_top_domains
+    _install_fake_get(monkeypatch, _default_url_map())
+
+    aggregate_top_domains.run(str(tmp_path))
+    rows = _read_output(tmp_path)
+    rows_by_count = {}
+    for row in rows:
+        rows_by_count.setdefault(row["count"], []).append(row)
+
+    # Among count=1 domains: tranco-only.test (rank 500) should come before
+    # umbrella-only.test (rank 999000) because it has higher score.
+    count1 = rows_by_count.get("1", [])
+    domains_1 = [r["domain"] for r in count1]
+    if "tranco-only.test" in domains_1 and "umbrella-only.test" in domains_1:
+        i_tranco = domains_1.index("tranco-only.test")
+        i_umbrella = domains_1.index("umbrella-only.test")
+        assert i_tranco < i_umbrella, (
+            f"tranco-only.test (score ~1/500) should come before "
+            f"umbrella-only.test (score ~1/999000); got order: {domains_1}"
+        )
 
 
 def test_aggregate_crux_origin_normalization(tmp_path, monkeypatch):
@@ -100,18 +122,14 @@ def test_aggregate_crux_origin_normalization(tmp_path, monkeypatch):
 
     aggregate_top_domains.run(str(tmp_path))
     rows = _read_output(tmp_path)
-    domains = {row["domain"]: row for row in rows}
+    by_domain = {r["domain"]: r for r in rows}
 
-    # https://www.google.com in CrUX → stripped to google.com → should merge with
-    # google.com in other lists, so CrUX appears in the 'lists' field
-    assert "crux" in domains["google.com"]["lists"].split("|")
+    # https://www.google.com → google.com, merges with other lists
+    assert "crux" in by_domain["google.com"]["lists"].split("|")
 
-    # https://youtube.com (no www.) → youtube.com
-    assert "crux" in domains["youtube.com"]["lists"].split("|")
-
-    # https://en.wikipedia.org → keeps subdomain (no PSL yet)
-    assert "en.wikipedia.org" in domains
-    assert domains["en.wikipedia.org"]["lists"] == "crux"
+    # https://en.wikipedia.org stays as-is
+    assert "en.wikipedia.org" in by_domain
+    assert by_domain["en.wikipedia.org"]["lists"] == "crux"
 
 
 def test_aggregate_idempotent(tmp_path, monkeypatch):
@@ -128,10 +146,9 @@ def test_aggregate_idempotent(tmp_path, monkeypatch):
 def test_aggregate_upstream_failure_writes_nothing(tmp_path, monkeypatch):
     import requests as real_requests
     from feedcache.sources import aggregate_top_domains
-
-    # Mock: first 4 OK, crux 500
-    url_map = _default_url_map()
     from feedcache.sources.aggregate_top_domains import SOURCES
+
+    url_map = _default_url_map()
     url_by_name = {name: url for name, url, _ in SOURCES}
 
     def fake_get(url, timeout=None):
@@ -149,5 +166,4 @@ def test_aggregate_upstream_failure_writes_nothing(tmp_path, monkeypatch):
     with pytest.raises(real_requests.HTTPError):
         aggregate_top_domains.run(str(tmp_path))
 
-    # No files produced
     assert list(tmp_path.glob("*.csv.gz")) == []
