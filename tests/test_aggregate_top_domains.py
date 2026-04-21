@@ -51,6 +51,12 @@ _FAKE_CRUX = _gzip_bytes(
     "https://blog.github.io,10000\n"       # → blog.github.io (github.io is a public suffix)
     ",1000\n"                              # empty origin — skipped
 )
+_FAKE_COMMON_CRAWL = _gzip_bytes(
+    "rank,harmonicc_val,pr_pos,pr_val,domain,n_hosts\n"
+    "1,9.5E7,2,0.01,google.com,41269\n"
+    "2,9.0E7,3,0.012,youtube.com,50\n"
+    "1000,5.0E6,1500,0.0005,cc-only.example,1\n"
+)
 
 
 def _install_fake_get(monkeypatch, url_to_body: dict):
@@ -73,6 +79,7 @@ def _default_url_map():
         url_by_name["majestic"]: _FAKE_MAJESTIC,
         url_by_name["cloudflare-radar"]: _FAKE_CLOUDFLARE,
         url_by_name["crux"]: _FAKE_CRUX,
+        url_by_name["common-crawl"]: _FAKE_COMMON_CRAWL,
     }
 
 
@@ -92,20 +99,20 @@ def test_aggregate_has_score_column_and_sorts_by_count_then_score(tmp_path, monk
     rows = _read_output(tmp_path)
     assert set(rows[0].keys()) == {"domain", "count", "score", "lists"}
 
-    # google.com in all 5 (RRF K=60):
-    # 3/(60+1) + 1/(60+1000000) + 1/(60+1000) ≈ 0.050125
+    # google.com in all 6 (RRF K=60, CC rank=1):
+    # 4/(60+1) + 1/(60+1000000) + 1/(60+1000) ≈ 0.066518
     first = rows[0]
     assert first["domain"] == "google.com"
-    assert first["count"] == "5"
-    assert first["score"] == "0.050125"
-    assert first["lists"] == "cloudflare-radar|crux|majestic|tranco|umbrella"
+    assert first["count"] == "6"
+    assert first["score"] == "0.066518"
+    assert first["lists"] == "cloudflare-radar|common-crawl|crux|majestic|tranco|umbrella"
 
-    # youtube.com in 4 (not majestic):
-    # 1/62 + 1/63 + 1/1000060 + 1/1060 ≈ 0.032946
+    # youtube.com in 5 (not majestic; CC rank=2):
+    # 1/62 + 1/63 + 1/1000060 + 1/1060 + 1/62 ≈ 0.049075
     second = rows[1]
     assert second["domain"] == "youtube.com"
-    assert second["count"] == "4"
-    assert second["score"] == "0.032946"
+    assert second["count"] == "5"
+    assert second["score"] == "0.049075"
 
 
 def test_aggregate_within_count_tier_higher_score_comes_first(tmp_path, monkeypatch):
@@ -225,3 +232,22 @@ def test_aggregate_upstream_failure_writes_nothing(tmp_path, monkeypatch):
         aggregate_top_domains.run(str(tmp_path))
 
     assert list(tmp_path.glob("*.csv.gz")) == []
+
+
+def test_aggregate_common_crawl_only_domain_lands_with_count_1(tmp_path, monkeypatch):
+    """A domain that appears only in CC gets count=1, lists=common-crawl,
+    and score = 1/(60+rank)."""
+    from feedcache.sources import aggregate_top_domains
+    _install_fake_get(monkeypatch, _default_url_map())
+
+    aggregate_top_domains.run(str(tmp_path))
+    rows = _read_output(tmp_path)
+    by_domain = {r["domain"]: r for r in rows}
+
+    assert "cc-only.example" in by_domain, \
+        "cc-only.example should land from the CC fixture"
+    row = by_domain["cc-only.example"]
+    assert row["count"] == "1"
+    assert row["lists"] == "common-crawl"
+    # rank=1000 in CC → contribution 1/(60+1000) = 1/1060 ≈ 0.000943
+    assert row["score"] == "0.000943"

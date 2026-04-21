@@ -34,6 +34,9 @@ SOURCES: list[tuple[str, str, str]] = [
     ("crux",
      "https://raw.githubusercontent.com/wangmm001/crux-top-lists-mirror/main/data/global/current.csv.gz",
      "crux"),
+    ("common-crawl",
+     "https://raw.githubusercontent.com/wangmm001/common-crawl-ranks-cache/main/data/domain/current.csv.gz",
+     "common_crawl"),
 ]
 
 UNORDERED_RANK = 1_000_000
@@ -123,11 +126,26 @@ def _parse_crux(text: str, psl: PublicSuffixList) -> dict[str, int]:
     return out
 
 
+def _parse_common_crawl(text: str, psl: PublicSuffixList) -> dict[str, int]:
+    out: dict[str, int] = {}
+    reader = csv.DictReader(io.StringIO(text))
+    for row in reader:
+        try:
+            rank = int((row.get("rank") or "").strip())
+        except ValueError:
+            continue
+        d = _normalize(row.get("domain") or "", psl)
+        if d and (d not in out or rank < out[d]):
+            out[d] = rank
+    return out
+
+
 PARSERS = {
     "rank_domain_noheader": _parse_rank_domain_noheader,
     "majestic": _parse_majestic,
     "cloudflare": _parse_cloudflare,
     "crux": _parse_crux,
+    "common_crawl": _parse_common_crawl,
 }
 
 
