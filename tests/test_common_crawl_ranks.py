@@ -256,3 +256,57 @@ def test_second_run_is_idempotent_noop(tmp_path, monkeypatch):
     second_listing = sorted(p.name for p in (tmp_path / "host").iterdir())
 
     assert first_listing == second_listing, (first_listing, second_listing)
+
+
+def test_malformed_line_aborts_without_writing(tmp_path, monkeypatch):
+    from feedcache.sources import common_crawl_ranks as m
+
+    # Row with only 4 tab-separated fields instead of 5.
+    bad_gz = gzip.compress(
+        b"#harmonicc_pos\t#harmonicc_val\t#pr_pos\t#pr_val\t#host_rev\n"
+        b"1\t3.75E7\t5\t0.0049\n",
+        mtime=0,
+    )
+
+    _patch_http(monkeypatch, {
+        m.GRAPHINFO_URL: lambda url, **kw: _FakeResponse(
+            content=_FAKE_GRAPHINFO_BYTES, json_data=_FAKE_GRAPHINFO
+        ),
+        "host-ranks.txt.gz": lambda url, **kw: _FakeResponse(raw_bytes=bad_gz),
+        # domain fetch never happens because host raises first
+    })
+
+    with pytest.raises(RuntimeError, match="malformed ranks line"):
+        m.run(str(tmp_path))
+
+    # Nothing under data/host or data/domain
+    if (tmp_path / "host").exists():
+        assert list((tmp_path / "host").glob("*.csv.gz")) == []
+    if (tmp_path / "domain").exists():
+        assert list((tmp_path / "domain").glob("*.csv.gz")) == []
+
+
+def test_ranks_404_propagates_without_partial_writes(tmp_path, monkeypatch):
+    from feedcache.sources import common_crawl_ranks as m
+
+    class _NotFound(_FakeResponse):
+        def raise_for_status(self):
+            import requests as _rq
+            err = _rq.HTTPError("404 Not Found")
+            raise err
+
+    _patch_http(monkeypatch, {
+        m.GRAPHINFO_URL: lambda url, **kw: _FakeResponse(
+            content=_FAKE_GRAPHINFO_BYTES, json_data=_FAKE_GRAPHINFO
+        ),
+        "host-ranks.txt.gz": lambda url, **kw: _NotFound(raw_bytes=b""),
+    })
+
+    import requests as _rq
+    with pytest.raises(_rq.HTTPError):
+        m.run(str(tmp_path))
+
+    if (tmp_path / "host").exists():
+        assert list((tmp_path / "host").glob("*.csv.gz")) == []
+    if (tmp_path / "domain").exists():
+        assert list((tmp_path / "domain").glob("*.csv.gz")) == []
