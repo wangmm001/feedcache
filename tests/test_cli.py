@@ -15,6 +15,7 @@ def test_cli_help():
     assert "majestic" in result.stdout
     assert "public-suffix-list" in result.stdout
     assert "cloud-ip-ranges" in result.stdout
+    assert "aggregate-top-domains" in result.stdout
 
 
 def test_cli_dispatches_to_source(tmp_path):
