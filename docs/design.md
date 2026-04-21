@@ -41,7 +41,7 @@ wangmm001/feedcache                        ← code (this repo)
 | `public-suffix-list-cache` | mirror | `publicsuffix.org/list/public_suffix_list.dat` | 04:30 | `data/YYYY-MM-DD.dat.gz`, `data/current.dat.gz` |
 | `cloud-ip-ranges-cache` | mirror | AWS/GCP/Azure/Cloudflare (see §5a) | 04:45 | `data/YYYY-MM-DD/{aws,gcp,azure,cloudflare-v4,cloudflare-v6}.{json,txt}.gz`, `data/current/…` |
 | `common-crawl-ranks-cache` | mirror | CC `https://index.commoncrawl.org/graphinfo.json` + per-release `host/domain-ranks.txt.gz` | 04:30 (concurrent with `public-suffix-list-cache`; each runs in a separate Actions VM) | `data/{host,domain}/YYYY-MM-DD_<release-id>.csv.gz`, `data/{host,domain}/current.csv.gz`, `data/{host,domain}/current.release.txt`, `data/graphinfo.json` |
-| `top-domains-aggregate` | derived | 5 sibling `current.csv.gz` files + PSL cache | 05:30 | `data/YYYY-MM-DD.csv.gz`, `data/current.csv.gz` |
+| `top-domains-aggregate` | derived | 6 sibling `current.csv.gz` files + PSL cache | 05:30 | `data/YYYY-MM-DD.csv.gz`, `data/current.csv.gz` |
 | `crux-top-lists-mirror` | fork mirror | `zakird/crux-top-lists` | 05:00 | inherited from upstream (see §5c) |
 
 All mirror repos share three conventions:
@@ -153,7 +153,7 @@ Each source downloads its upstream, compresses deterministically, writes a dated
 
 **aggregate-top-domains** (`aggregate_top_domains.py`) → `top-domains-aggregate`
 
-This is **not a mirror**. It fetches `current.csv.gz` from five sibling data repos over HTTPS, normalizes every domain to its registrable name (eTLD+1), computes a cross-list score, and writes one CSV per day.
+This is **not a mirror**. It fetches `current.csv.gz` from six sibling data repos over HTTPS, normalizes every domain to its registrable name (eTLD+1), computes a cross-list score, and writes one CSV per day.
 
 **Inputs (fetched at run time):**
 
@@ -164,6 +164,7 @@ This is **not a mirror**. It fetches `current.csv.gz` from five sibling data rep
 | majestic | `…/majestic-million-cache/…/current.csv.gz` | ordinal (`GlobalRank`) 1–1 000 000 |
 | cloudflare-radar | `…/cloudflare-radar-rankings-cache/…/current/top-1000000.csv.gz` | unordered; all entries assigned synthetic rank 1 000 000 |
 | crux | `…/crux-top-lists-mirror/…/data/global/current.csv.gz` | bucket (1000/10000/100000/1000000); best bucket per origin used |
+| common-crawl | `…/common-crawl-ranks-cache/…/data/domain/current.csv.gz` | ordinal 1–1 000 000 (CC `harmonicc_pos`) |
 
 Plus PSL from `…/public-suffix-list-cache/…/current.dat.gz`.
 
@@ -187,7 +188,7 @@ The constant `RRF_K = 60` damps rank-1 dominance: the score ratio between rank 1
 **Output format** (`domain,count,score,lists`, 4 columns):
 
 - `domain`: registrable name (eTLD+1), e.g. `google.com`
-- `count`: number of lists (1–5) where the domain appears
+- `count`: number of lists (1–6) where the domain appears
 - `score`: sum of RRF contributions, formatted to 6 decimal places
 - `lists`: `|`-separated sorted list of source names, e.g. `crux|tranco|umbrella`
 - Rows sorted: `count DESC`, `score DESC`, `domain ASC`
@@ -202,6 +203,7 @@ Written to `data/YYYY-MM-DD.csv.gz`; `data/current.csv.gz` updated via `update_c
 | v2 | added `score = sum(1/rank_i)` RRF column — 4-col output |
 | v2.1 | added PSL normalization (fetches `public-suffix-list-cache` at runtime) |
 | v2.2 | smoothed score to `sum(1/(60 + rank_i))` to damp rank-1 dominance |
+| v2.3 | added common-crawl as 6th source (domain-level Top-1M, harmonicc_pos rank) |
 
 ### 5c. GitHub fork mirror (1 repo, no feedcache involvement)
 
