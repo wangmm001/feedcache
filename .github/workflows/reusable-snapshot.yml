@@ -36,5 +36,5 @@ jobs:
             echo "No changes to commit."
             exit 0
           fi
-          git commit -m "Snapshot: $(date -u +%Y-%m-%dT%H:%MZ)"
+          git commit -m "Snapshot: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push
