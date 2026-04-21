@@ -13,6 +13,7 @@ def test_cli_help():
     assert "tranco" in result.stdout
     assert "cloudflare-radar" in result.stdout
     assert "majestic" in result.stdout
+    assert "public-suffix-list" in result.stdout
 
 
 def test_cli_dispatches_to_source(tmp_path):
