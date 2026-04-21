@@ -19,6 +19,7 @@ wangmm001/feedcache                        ← code (this repo)
 ├── wangmm001/majestic-million-cache       ← mirror (daily)
 ├── wangmm001/public-suffix-list-cache     ← mirror (daily)
 ├── wangmm001/cloud-ip-ranges-cache        ← mirror (daily)
+├── wangmm001/common-crawl-ranks-cache    ← mirror (daily cron, quarterly content)
 │
 ├── wangmm001/top-domains-aggregate        ← derived (daily)
 │
@@ -39,6 +40,7 @@ wangmm001/feedcache                        ← code (this repo)
 | `majestic-million-cache` | mirror | `downloads.majestic.com/majestic_million.csv` | 04:15 | `data/YYYY-MM-DD.csv.gz`, `data/current.csv.gz` |
 | `public-suffix-list-cache` | mirror | `publicsuffix.org/list/public_suffix_list.dat` | 04:30 | `data/YYYY-MM-DD.dat.gz`, `data/current.dat.gz` |
 | `cloud-ip-ranges-cache` | mirror | AWS/GCP/Azure/Cloudflare (see §5a) | 04:45 | `data/YYYY-MM-DD/{aws,gcp,azure,cloudflare-v4,cloudflare-v6}.{json,txt}.gz`, `data/current/…` |
+| `common-crawl-ranks-cache` | mirror | CC `https://index.commoncrawl.org/graphinfo.json` + per-release `host/domain-ranks.txt.gz` | 04:30 | `data/{host,domain}/YYYY-MM-DD_<release-id>.csv.gz`, `data/{host,domain}/current.csv.gz`, `data/{host,domain}/current.release.txt`, `data/graphinfo.json` |
 | `top-domains-aggregate` | derived | 5 sibling `current.csv.gz` files + PSL cache | 05:30 | `data/YYYY-MM-DD.csv.gz`, `data/current.csv.gz` |
 | `crux-top-lists-mirror` | fork mirror | `zakird/crux-top-lists` | 05:00 | inherited from upstream (see §5c) |
 
@@ -95,7 +97,7 @@ The CLI entry point is `feedcache <source> <out_dir>`. `__main__.py` maintains a
 
 ## 5. Source types — three patterns
 
-### 5a. Direct mirror (6 sources in 6 data repos)
+### 5a. Direct mirror (7 sources in 7 data repos)
 
 Each source downloads its upstream, compresses deterministically, writes a dated file plus a `current.*` pointer, and returns. All network I/O happens before any file is written — failure mid-download leaves the data directory unchanged.
 
@@ -127,6 +129,14 @@ Each source downloads its upstream, compresses deterministically, writes a dated
 - Mozilla Public Suffix List in `.dat` format. Stored as-is (no CSV transformation).
 - Writes `data/YYYY-MM-DD.dat.gz`, updates `data/current.dat.gz`.
 - Consumed at runtime by `aggregate_top_domains.py` for eTLD+1 normalization.
+
+**common-crawl-ranks** (`common_crawl_ranks.py`)
+- Upstream discovery: `https://index.commoncrawl.org/graphinfo.json` — JSON array of releases, newest first. The source reads `releases[0]["id"]` (e.g. `cc-main-2026-jan-feb-mar`).
+- Idempotence: if `data/host/current.release.txt` already matches the latest release id, the run refreshes only `data/graphinfo.json` and short-circuits. Common Crawl publishes roughly one release per quarter, so daily cron short-circuits on ~90% of days.
+- Per-release fetch: `https://data.commoncrawl.org/projects/hyperlinkgraph/{release}/{host,domain}/{release}-{host,domain}-ranks.txt.gz`. Streamed + Top-1M-truncated in a single pass so only the first ~15–25 MB per level is actually transferred (raw files are 2.5–5.6 GB compressed).
+- Output per run: `data/host/YYYY-MM-DD_{release-id}.csv.gz` + `data/domain/YYYY-MM-DD_{release-id}.csv.gz`, plus their `current.csv.gz` / `current.release.txt` siblings, plus `data/graphinfo.json`.
+- Columns: `rank,harmonicc_val,pr_pos,pr_val,{host,domain}` — upstream `#host_rev` is reversed (`com.facebook.www` → `www.facebook.com`).
+- No auth; no new secrets.
 
 **cloud-ip-ranges** (`cloud_ip_ranges.py`)
 - Four providers combined in one atomic snapshot under a single dated directory:
@@ -225,7 +235,7 @@ Characteristics:
 
 ### reusable-snapshot.yml and the cron pattern
 
-`feedcache/.github/workflows/reusable-snapshot.yml` is called by each of the 7 feedcache-populated data repos. It accepts one input (`source`) and one optional secret (`CLOUDFLARE_RADAR_API_TOKEN`):
+`feedcache/.github/workflows/reusable-snapshot.yml` is called by each of the 8 feedcache-populated data repos. It accepts one input (`source`) and one optional secret (`CLOUDFLARE_RADAR_API_TOKEN`):
 
 ```yaml
 # Steps condensed:
@@ -309,7 +319,7 @@ These are issues discovered during implementation and how each was resolved:
 
 ## 10. Repository URLs
 
-All nine repos under `wangmm001`:
+All ten repos under `wangmm001`:
 
 - `https://github.com/wangmm001/feedcache` — code
 - `https://github.com/wangmm001/umbrella-top1m-cache` — data
@@ -318,5 +328,6 @@ All nine repos under `wangmm001`:
 - `https://github.com/wangmm001/majestic-million-cache` — data
 - `https://github.com/wangmm001/public-suffix-list-cache` — data
 - `https://github.com/wangmm001/cloud-ip-ranges-cache` — data
+- `https://github.com/wangmm001/common-crawl-ranks-cache` — data
 - `https://github.com/wangmm001/top-domains-aggregate` — derived data
 - `https://github.com/wangmm001/crux-top-lists-mirror` — fork mirror
