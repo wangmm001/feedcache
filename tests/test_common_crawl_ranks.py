@@ -104,10 +104,11 @@ def test_empty_releases_returns_false(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
-def _build_ranks_gz(rows):
-    """rows = list of (hc_pos, hc_val, pr_pos, pr_val, entity_rev) tuples.
+def _build_ranks_gz(rows, extra_header_cols=()):
+    """rows = list of (hc_pos, hc_val, pr_pos, pr_val, entity_rev, ...) tuples.
     Returns gzip-compressed, tab-separated bytes matching CC upstream schema."""
-    header = "#harmonicc_pos\t#harmonicc_val\t#pr_pos\t#pr_val\t#host_rev\n"
+    header_cols = ["#harmonicc_pos", "#harmonicc_val", "#pr_pos", "#pr_val", "#host_rev", *(f"#{c}" for c in extra_header_cols)]
+    header = "\t".join(header_cols) + "\n"
     body = "".join("\t".join(row) + "\n" for row in rows)
     return gzip.compress((header + body).encode("utf-8"), mtime=0)
 
@@ -153,9 +154,9 @@ def test_truncate_and_transform_host(monkeypatch, tmp_path):
 
 
 _FAKE_DOMAIN_ROWS = [
-    ("1", "9.1E7", "2", "0.005", "com.google"),
-    ("2", "9.0E7", "1", "0.006", "com.facebook"),
-    ("3", "8.5E7", "3", "0.004", "org.wikipedia"),
+    ("1", "9.1E7", "2", "0.005", "com.google", "41269"),
+    ("2", "9.0E7", "1", "0.006", "com.facebook", "3356"),
+    ("3", "8.5E7", "3", "0.004", "org.wikipedia", "2100"),
 ]
 
 
@@ -169,18 +170,18 @@ def test_truncate_and_transform_domain(monkeypatch, tmp_path):
             content=_FAKE_GRAPHINFO_BYTES, json_data=_FAKE_GRAPHINFO
         ),
         "domain-ranks.txt.gz": lambda url, **kw: _FakeResponse(
-            raw_bytes=_build_ranks_gz(_FAKE_DOMAIN_ROWS)
+            raw_bytes=_build_ranks_gz(_FAKE_DOMAIN_ROWS, extra_header_cols=("n_hosts",))
         ),
     })
 
     domain_bytes = m._download_ranks("cc-main-2026-jan-feb-mar", "domain", "domain")
     text = domain_bytes.decode("utf-8").splitlines()
 
-    assert text[0] == "rank,harmonicc_val,pr_pos,pr_val,domain"
+    assert text[0] == "rank,harmonicc_val,pr_pos,pr_val,domain,n_hosts"
     assert len(text) == 4
-    assert text[1] == "1,9.1E7,2,0.005,google.com"
-    assert text[2] == "2,9.0E7,1,0.006,facebook.com"
-    assert text[3] == "3,8.5E7,3,0.004,wikipedia.org"
+    assert text[1] == "1,9.1E7,2,0.005,google.com,41269"
+    assert text[2] == "2,9.0E7,1,0.006,facebook.com,3356"
+    assert text[3] == "3,8.5E7,3,0.004,wikipedia.org,2100"
 
 
 def test_end_to_end_writes_all_outputs(tmp_path, monkeypatch):
@@ -196,7 +197,7 @@ def test_end_to_end_writes_all_outputs(tmp_path, monkeypatch):
             raw_bytes=_build_ranks_gz(_FAKE_HOST_ROWS)
         ),
         "domain-ranks.txt.gz": lambda url, **kw: _FakeResponse(
-            raw_bytes=_build_ranks_gz(_FAKE_DOMAIN_ROWS)
+            raw_bytes=_build_ranks_gz(_FAKE_DOMAIN_ROWS, extra_header_cols=("n_hosts",))
         ),
     })
 
@@ -224,7 +225,7 @@ def test_end_to_end_writes_all_outputs(tmp_path, monkeypatch):
     assert len(domain_csvs) == 2
     assert (domain_dir / "current.release.txt").read_text().strip() == "cc-main-2026-jan-feb-mar"
     assert gzip.decompress((domain_dir / "current.csv.gz").read_bytes()).decode().splitlines()[0] == \
-        "rank,harmonicc_val,pr_pos,pr_val,domain"
+        "rank,harmonicc_val,pr_pos,pr_val,domain,n_hosts"
 
     # --- top-level graphinfo snapshot ---
     assert json.loads((tmp_path / "graphinfo.json").read_bytes()) == _FAKE_GRAPHINFO
@@ -245,7 +246,7 @@ def test_second_run_is_idempotent_noop(tmp_path, monkeypatch):
             raw_bytes=_build_ranks_gz(_FAKE_HOST_ROWS)
         ),
         "domain-ranks.txt.gz": lambda url, **kw: _FakeResponse(
-            raw_bytes=_build_ranks_gz(_FAKE_DOMAIN_ROWS)
+            raw_bytes=_build_ranks_gz(_FAKE_DOMAIN_ROWS, extra_header_cols=("n_hosts",))
         ),
     })
 

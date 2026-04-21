@@ -27,10 +27,11 @@ def _reverse_entity(entity_rev: str) -> str:
     return ".".join(reversed(entity_rev.split(".")))
 
 
-def _truncate_and_transform(response, entity_col: str) -> bytes:
+def _truncate_and_transform(response, entity_col: str, extra_cols: tuple[str, ...] = ()) -> bytes:
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator="\n")
-    w.writerow(["rank", "harmonicc_val", "pr_pos", "pr_val", entity_col])
+    w.writerow(["rank", "harmonicc_val", "pr_pos", "pr_val", entity_col, *extra_cols])
+    expected_fields = 5 + len(extra_cols)
     with gzip.GzipFile(fileobj=response.raw) as gz:
         reader = io.TextIOWrapper(gz, encoding="utf-8", newline="")
         header = next(reader)
@@ -40,18 +41,19 @@ def _truncate_and_transform(response, entity_col: str) -> bytes:
             if i > TOP_N:
                 break
             fields = line.rstrip("\n").split("\t")
-            if len(fields) != 5:
+            if len(fields) != expected_fields:
                 raise RuntimeError(f"malformed ranks line {i}: {line!r}")
-            hc_pos, hc_val, pr_pos, pr_val, entity_rev = fields
-            w.writerow([hc_pos, hc_val, pr_pos, pr_val, _reverse_entity(entity_rev)])
+            hc_pos, hc_val, pr_pos, pr_val, entity_rev, *extras = fields
+            w.writerow([hc_pos, hc_val, pr_pos, pr_val, _reverse_entity(entity_rev), *extras])
     return buf.getvalue().encode("utf-8")
 
 
 def _download_ranks(release_id: str, level: str, entity_col: str) -> bytes:
+    extras = ("n_hosts",) if level == "domain" else ()
     url = _ranks_url(release_id, level)
     with requests.get(url, stream=True, timeout=TIMEOUT) as r:
         r.raise_for_status()
-        return _truncate_and_transform(r, entity_col)
+        return _truncate_and_transform(r, entity_col, extras)
 
 
 def run(out_dir: str) -> bool:
