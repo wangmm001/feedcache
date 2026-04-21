@@ -12,6 +12,8 @@ Three repos are populated by this codebase via a shared reusable workflow:
 | Tranco Top 1M | [`wangmm001/tranco-top1m-cache`](https://github.com/wangmm001/tranco-top1m-cache) | `https://tranco-list.eu/` |
 | Cloudflare Radar rank buckets | [`wangmm001/cloudflare-radar-rankings-cache`](https://github.com/wangmm001/cloudflare-radar-rankings-cache) | Cloudflare Radar API `/radar/datasets/ranking_top_<N>` |
 | Majestic Million | [`wangmm001/majestic-million-cache`](https://github.com/wangmm001/majestic-million-cache) | `https://downloads.majestic.com/majestic_million.csv` |
+| Public Suffix List | [`wangmm001/public-suffix-list-cache`](https://github.com/wangmm001/public-suffix-list-cache) | `https://publicsuffix.org/list/public_suffix_list.dat` |
+| Cloud IP ranges (AWS/GCP/Azure/Cloudflare) | [`wangmm001/cloud-ip-ranges-cache`](https://github.com/wangmm001/cloud-ip-ranges-cache) | AWS/GCP/Cloudflare direct JSON+TXT, Azure via HTML scrape |
 
 One companion repo is a **strict GitHub fork mirror** (not populated by this code — it just replays an upstream repo):
 
