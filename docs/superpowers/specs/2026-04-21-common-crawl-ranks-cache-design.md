@@ -70,25 +70,32 @@ common-crawl-ranks-cache/
 
 ## 5. Output CSV schema
 
-Both `host-ranks` and `domain-ranks` CSVs share the same column order, header-first, comma-separated, UTF-8:
+Header-first, comma-separated, UTF-8. Schemas differ per level (host is 5 columns, domain is 6):
 
 ```
+# host/*.csv.gz
 rank,harmonicc_val,pr_pos,pr_val,host
 1,3.7549092E7,5,0.004897432273872421,www.facebook.com
-2,3.7300396E7,4,0.006354617185491388,fonts.googleapis.com
+
+# domain/*.csv.gz
+rank,harmonicc_val,pr_pos,pr_val,domain,n_hosts
+1,3.053703E7,3,0.009072779578696339,facebook.com,3356
 ```
 
-| Column | Source | Transform |
-|---|---|---|
-| `rank` | upstream `#harmonicc_pos` | integer, 1 to 1,000,000, ascending |
-| `harmonicc_val` | upstream `#harmonicc_val` | passed through unchanged (scientific notation preserved) |
-| `pr_pos` | upstream `#pr_pos` | integer, passed through |
-| `pr_val` | upstream `#pr_val` | passed through unchanged |
-| `host` (host file) or `domain` (domain file) | upstream `#host_rev` | split by `.`, reversed, rejoined (`com.facebook.www` → `www.facebook.com`) |
+| Column | Source | Transform | Present in |
+|---|---|---|---|
+| `rank` | upstream `#harmonicc_pos` | integer, 1 to 1,000,000, ascending | host + domain |
+| `harmonicc_val` | upstream `#harmonicc_val` | passed through unchanged (scientific notation preserved) | host + domain |
+| `pr_pos` | upstream `#pr_pos` | integer, passed through | host + domain |
+| `pr_val` | upstream `#pr_val` | passed through unchanged | host + domain |
+| `host` (host file) or `domain` (domain file) | upstream `#host_rev` | split by `.`, reversed, rejoined (`com.facebook.www` → `www.facebook.com`) | host + domain |
+| `n_hosts` | upstream `#n_hosts` | passed through (count of distinct hosts aggregated into this registrable domain) | **domain only** |
 
 Rows sorted by `rank` ascending. Header row included.
 
 ### Upstream format for reference (from an actual fetch)
+
+Host file — 5 columns:
 
 ```
 #harmonicc_pos	#harmonicc_val	#pr_pos	#pr_val	#host_rev
@@ -96,7 +103,17 @@ Rows sorted by `rank` ascending. Header row included.
 2	3.7300396E7	4	0.006354617185491388	com.googleapis.fonts
 ```
 
-Tab-separated; 5 columns; header prefixed with `#`. Confirmed by `curl` + `gunzip -c | head` against `cc-main-2025-26-dec-jan-feb` on 2026-04-21.
+Domain file — 6 columns (extra trailing `#n_hosts`):
+
+```
+#harmonicc_pos	#harmonicc_val	#pr_pos	#pr_val	#host_rev	#n_hosts
+1	3.053703E7	3	0.009072779578696339	com.facebook	3356
+2	3.0458862E7	2	0.01547277614257803	com.googleapis	2899
+```
+
+Tab-separated; header prefixed with `#`. Confirmed by `curl` + `gunzip -c | head` against `cc-main-2025-26-dec-jan-feb` (host) and `cc-main-2026-jan-feb-mar` (domain) on 2026-04-21.
+
+> **Errata (2026-04-21):** Initial drafts of this spec assumed both files shared the host's 5-column schema. The live workflow exposed the extra `#n_hosts` column on the domain side and a hotfix generalized `_truncate_and_transform` to accept arbitrary extra columns. The Output CSV schema table above was updated correspondingly so that the `domain` file emits `n_hosts` as a 6th column.
 
 ### Why comma-separated with header
 
@@ -236,7 +253,7 @@ Mocking style: existing feedcache tests use `pytest`'s `monkeypatch` fixture to 
 ```yaml
 name: daily
 on:
-  schedule: [{ cron: "30 4 * * *" }]    # 04:30 UTC — empty slot in feedcache cron lineup
+  schedule: [{ cron: "30 4 * * *" }]    # 04:30 UTC — concurrent with public-suffix-list-cache; separate Actions VMs
   workflow_dispatch:
 permissions:
   contents: write
@@ -249,7 +266,7 @@ jobs:
 No new secrets (CC is entirely anonymous HTTPS). The existing reusable workflow needs no changes — it already accepts any `source` name and passes it to the `feedcache` CLI.
 
 **Cron slot chosen**: 04:30 UTC. Existing lineup:
-- 03:30 umbrella, 03:45 tranco, 04:00 cloudflare-radar, 04:15 majestic, (04:30 — free), 04:45 cloud-ip-ranges, 05:00 crux-mirror, 05:30 aggregate-top-domains.
+- 03:30 umbrella, 03:45 tranco, 04:00 cloudflare-radar, 04:15 majestic, 04:30 public-suffix-list, 04:45 cloud-ip-ranges, 05:00 crux-mirror, 05:30 aggregate-top-domains. common-crawl-ranks piles onto the 04:30 slot alongside PSL; GitHub Actions runs them in separate VMs so there's no contention, and both short-circuit on most days (PSL when upstream `public_suffix_list.dat` is unchanged, CC when `graphinfo.json` still points at the same release).
 
 04:30 slots cleanly between majestic and cloud-ip-ranges. Since `common-crawl-ranks` has no downstream dependency (aggregate is untouched in this phase), slot position is flexible.
 

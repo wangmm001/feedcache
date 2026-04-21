@@ -40,7 +40,7 @@ wangmm001/feedcache                        ← code (this repo)
 | `majestic-million-cache` | mirror | `downloads.majestic.com/majestic_million.csv` | 04:15 | `data/YYYY-MM-DD.csv.gz`, `data/current.csv.gz` |
 | `public-suffix-list-cache` | mirror | `publicsuffix.org/list/public_suffix_list.dat` | 04:30 | `data/YYYY-MM-DD.dat.gz`, `data/current.dat.gz` |
 | `cloud-ip-ranges-cache` | mirror | AWS/GCP/Azure/Cloudflare (see §5a) | 04:45 | `data/YYYY-MM-DD/{aws,gcp,azure,cloudflare-v4,cloudflare-v6}.{json,txt}.gz`, `data/current/…` |
-| `common-crawl-ranks-cache` | mirror | CC `https://index.commoncrawl.org/graphinfo.json` + per-release `host/domain-ranks.txt.gz` | 04:30 | `data/{host,domain}/YYYY-MM-DD_<release-id>.csv.gz`, `data/{host,domain}/current.csv.gz`, `data/{host,domain}/current.release.txt`, `data/graphinfo.json` |
+| `common-crawl-ranks-cache` | mirror | CC `https://index.commoncrawl.org/graphinfo.json` + per-release `host/domain-ranks.txt.gz` | 04:30 (concurrent with `public-suffix-list-cache`; each runs in a separate Actions VM) | `data/{host,domain}/YYYY-MM-DD_<release-id>.csv.gz`, `data/{host,domain}/current.csv.gz`, `data/{host,domain}/current.release.txt`, `data/graphinfo.json` |
 | `top-domains-aggregate` | derived | 5 sibling `current.csv.gz` files + PSL cache | 05:30 | `data/YYYY-MM-DD.csv.gz`, `data/current.csv.gz` |
 | `crux-top-lists-mirror` | fork mirror | `zakird/crux-top-lists` | 05:00 | inherited from upstream (see §5c) |
 
@@ -73,6 +73,7 @@ feedcache/
 │       ├── majestic.py
 │       ├── public_suffix_list.py
 │       ├── cloud_ip_ranges.py
+│       ├── common_crawl_ranks.py
 │       └── aggregate_top_domains.py
 ├── tests/
 │   ├── __init__.py
@@ -83,6 +84,7 @@ feedcache/
 │   ├── test_majestic.py
 │   ├── test_public_suffix_list.py
 │   ├── test_cloud_ip_ranges.py
+│   ├── test_common_crawl_ranks.py
 │   ├── test_aggregate_top_domains.py
 │   └── test_cli.py
 └── .github/
@@ -135,7 +137,7 @@ Each source downloads its upstream, compresses deterministically, writes a dated
 - Idempotence: if `data/host/current.release.txt` already matches the latest release id, the run refreshes only `data/graphinfo.json` and short-circuits. Common Crawl publishes roughly one release per quarter, so daily cron short-circuits on ~90% of days.
 - Per-release fetch: `https://data.commoncrawl.org/projects/hyperlinkgraph/{release}/{host,domain}/{release}-{host,domain}-ranks.txt.gz`. Streamed + Top-1M-truncated in a single pass so only the first ~15–25 MB per level is actually transferred (raw files are 2.5–5.6 GB compressed).
 - Output per run: `data/host/YYYY-MM-DD_{release-id}.csv.gz` + `data/domain/YYYY-MM-DD_{release-id}.csv.gz`, plus their `current.csv.gz` / `current.release.txt` siblings, plus `data/graphinfo.json`.
-- Columns: `rank,harmonicc_val,pr_pos,pr_val,{host,domain}` — upstream `#host_rev` is reversed (`com.facebook.www` → `www.facebook.com`).
+- Columns (host): `rank,harmonicc_val,pr_pos,pr_val,host`. Columns (domain): `rank,harmonicc_val,pr_pos,pr_val,domain,n_hosts` — the upstream domain file carries an extra trailing `#n_hosts` column (count of distinct hosts aggregated into that registrable domain). `#host_rev` is reversed to forward form (`com.facebook.www` → `www.facebook.com`) in both files.
 - No auth; no new secrets.
 
 **cloud-ip-ranges** (`cloud_ip_ranges.py`)
