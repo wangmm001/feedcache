@@ -4,7 +4,7 @@ Mirrors public internet top-list / metadata feeds into git-backed data repositor
 
 ## Data repositories
 
-Three repos are populated by this codebase via a shared reusable workflow:
+Seven repos are populated by this codebase via a shared reusable workflow:
 
 | Source | Data repo | Upstream |
 |---|---|---|
@@ -14,12 +14,13 @@ Three repos are populated by this codebase via a shared reusable workflow:
 | Majestic Million | [`wangmm001/majestic-million-cache`](https://github.com/wangmm001/majestic-million-cache) | `https://downloads.majestic.com/majestic_million.csv` |
 | Public Suffix List | [`wangmm001/public-suffix-list-cache`](https://github.com/wangmm001/public-suffix-list-cache) | `https://publicsuffix.org/list/public_suffix_list.dat` |
 | Cloud IP ranges (AWS/GCP/Azure/Cloudflare) | [`wangmm001/cloud-ip-ranges-cache`](https://github.com/wangmm001/cloud-ip-ranges-cache) | AWS/GCP/Cloudflare direct JSON+TXT, Azure via HTML scrape |
+| Common Crawl host/domain web-graph ranks (Top-1M) | [`wangmm001/common-crawl-ranks-cache`](https://github.com/wangmm001/common-crawl-ranks-cache) | CC `index.commoncrawl.org/graphinfo.json` + per-release `host/domain-ranks.txt.gz` (stream-truncated to Top-1M) |
 
-One derived aggregate (not a mirror — a daily full-outer-join across the five domain-providing sources above):
+One derived aggregate (not a mirror — a daily full-outer-join across the six domain-providing sources above):
 
 | Source | Data repo | Upstream |
 |---|---|---|
-| Cross-list top-domains aggregate | [`wangmm001/top-domains-aggregate`](https://github.com/wangmm001/top-domains-aggregate) | Derived from umbrella + tranco + majestic + cloudflare-radar + crux `current` files |
+| Cross-list top-domains aggregate | [`wangmm001/top-domains-aggregate`](https://github.com/wangmm001/top-domains-aggregate) | Derived from umbrella + tranco + majestic + cloudflare-radar + crux + common-crawl `current` files (v2.3 aggregator uses smoothed RRF `1/(60+rank)`) |
 
 One companion repo is a **strict GitHub fork mirror** (not populated by this code — it just replays an upstream repo):
 
@@ -79,7 +80,7 @@ For Cloudflare Radar also pass the secret:
 
 ## Design
 
-See [`docs/design.md`](docs/design.md) for the full architecture spec.
+See [`docs/design.md`](docs/design.md) for the full architecture spec, and [`docs/session-log-2026-04-21.md`](docs/session-log-2026-04-21.md) for how the most recent data repo (`common-crawl-ranks-cache`) and aggregator version (v2.3) landed.
 
 ## License
 
