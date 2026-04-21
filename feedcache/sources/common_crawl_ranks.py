@@ -5,7 +5,12 @@ from pathlib import Path
 
 import requests
 
-from feedcache.common import write_if_changed
+from feedcache.common import (
+    deterministic_gzip,
+    today_utc_date,
+    update_current,
+    write_if_changed,
+)
 
 
 GRAPHINFO_URL = "https://index.commoncrawl.org/graphinfo.json"
@@ -60,10 +65,31 @@ def run(out_dir: str) -> bool:
         return False
     release_id = releases[0]["id"]
 
-    current_release = out / "host" / "current.release.txt"
-    if current_release.exists() and current_release.read_text().strip() == release_id:
+    current_release_host = out / "host" / "current.release.txt"
+    if current_release_host.exists() and current_release_host.read_text().strip() == release_id:
         write_if_changed(graphinfo_resp.content, out / "graphinfo.json")
         return True
 
-    # Full write path is implemented in Task 5.
-    raise NotImplementedError("ranks disk-write path not yet implemented")
+    # Fetch both levels fully into memory before any disk write.
+    host_bytes = _download_ranks(release_id, "host", "host")
+    domain_bytes = _download_ranks(release_id, "domain", "domain")
+
+    host_dir = out / "host"
+    domain_dir = out / "domain"
+    host_dir.mkdir(parents=True, exist_ok=True)
+    domain_dir.mkdir(parents=True, exist_ok=True)
+
+    date = today_utc_date()
+    snapshot_name = f"{date}_{release_id}.csv.gz"
+
+    deterministic_gzip(host_bytes, host_dir / snapshot_name)
+    deterministic_gzip(domain_bytes, domain_dir / snapshot_name)
+
+    update_current(host_dir, "????-??-??_*.csv.gz", "current.csv.gz")
+    update_current(domain_dir, "????-??-??_*.csv.gz", "current.csv.gz")
+
+    release_line = (release_id + "\n").encode("utf-8")
+    write_if_changed(release_line, host_dir / "current.release.txt")
+    write_if_changed(release_line, domain_dir / "current.release.txt")
+    write_if_changed(graphinfo_resp.content, out / "graphinfo.json")
+    return True

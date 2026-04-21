@@ -181,3 +181,78 @@ def test_truncate_and_transform_domain(monkeypatch, tmp_path):
     assert text[1] == "1,9.1E7,2,0.005,google.com"
     assert text[2] == "2,9.0E7,1,0.006,facebook.com"
     assert text[3] == "3,8.5E7,3,0.004,wikipedia.org"
+
+
+def test_end_to_end_writes_all_outputs(tmp_path, monkeypatch):
+    from feedcache.sources import common_crawl_ranks as m
+
+    monkeypatch.setattr(m, "TOP_N", 3)
+
+    _patch_http(monkeypatch, {
+        m.GRAPHINFO_URL: lambda url, **kw: _FakeResponse(
+            content=_FAKE_GRAPHINFO_BYTES, json_data=_FAKE_GRAPHINFO
+        ),
+        "host-ranks.txt.gz": lambda url, **kw: _FakeResponse(
+            raw_bytes=_build_ranks_gz(_FAKE_HOST_ROWS)
+        ),
+        "domain-ranks.txt.gz": lambda url, **kw: _FakeResponse(
+            raw_bytes=_build_ranks_gz(_FAKE_DOMAIN_ROWS)
+        ),
+    })
+
+    assert m.run(str(tmp_path)) is True
+
+    # --- host side ---
+    host_dir = tmp_path / "host"
+    host_csvs = sorted(p.name for p in host_dir.glob("*.csv.gz"))
+    assert len(host_csvs) == 2, host_csvs  # one dated snapshot + current.csv.gz
+    assert "current.csv.gz" in host_csvs
+    dated_host = [n for n in host_csvs if n != "current.csv.gz"][0]
+    assert dated_host.endswith("_cc-main-2026-jan-feb-mar.csv.gz")
+    # current.csv.gz is byte-equal to the dated snapshot
+    assert (host_dir / "current.csv.gz").read_bytes() == (host_dir / dated_host).read_bytes()
+    # Release sidecar
+    assert (host_dir / "current.release.txt").read_text().strip() == "cc-main-2026-jan-feb-mar"
+    # Decompressed content starts with the expected CSV header
+    decompressed = gzip.decompress((host_dir / "current.csv.gz").read_bytes()).decode()
+    assert decompressed.splitlines()[0] == "rank,harmonicc_val,pr_pos,pr_val,host"
+    assert decompressed.splitlines()[1] == "1,3.75E7,5,0.0049,www.facebook.com"
+
+    # --- domain side ---
+    domain_dir = tmp_path / "domain"
+    domain_csvs = sorted(p.name for p in domain_dir.glob("*.csv.gz"))
+    assert len(domain_csvs) == 2
+    assert (domain_dir / "current.release.txt").read_text().strip() == "cc-main-2026-jan-feb-mar"
+    assert gzip.decompress((domain_dir / "current.csv.gz").read_bytes()).decode().splitlines()[0] == \
+        "rank,harmonicc_val,pr_pos,pr_val,domain"
+
+    # --- top-level graphinfo snapshot ---
+    assert json.loads((tmp_path / "graphinfo.json").read_bytes()) == _FAKE_GRAPHINFO
+
+
+def test_second_run_is_idempotent_noop(tmp_path, monkeypatch):
+    """Run twice back-to-back: second run should hit the early-return path
+    because current.release.txt already matches."""
+    from feedcache.sources import common_crawl_ranks as m
+
+    monkeypatch.setattr(m, "TOP_N", 3)
+
+    _patch_http(monkeypatch, {
+        m.GRAPHINFO_URL: lambda url, **kw: _FakeResponse(
+            content=_FAKE_GRAPHINFO_BYTES, json_data=_FAKE_GRAPHINFO
+        ),
+        "host-ranks.txt.gz": lambda url, **kw: _FakeResponse(
+            raw_bytes=_build_ranks_gz(_FAKE_HOST_ROWS)
+        ),
+        "domain-ranks.txt.gz": lambda url, **kw: _FakeResponse(
+            raw_bytes=_build_ranks_gz(_FAKE_DOMAIN_ROWS)
+        ),
+    })
+
+    assert m.run(str(tmp_path)) is True
+    first_listing = sorted(p.name for p in (tmp_path / "host").iterdir())
+
+    assert m.run(str(tmp_path)) is True
+    second_listing = sorted(p.name for p in (tmp_path / "host").iterdir())
+
+    assert first_listing == second_listing, (first_listing, second_listing)
