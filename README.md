@@ -11,6 +11,7 @@ Three repos are populated by this codebase via a shared reusable workflow:
 | Cisco Umbrella Top 1M | [`wangmm001/umbrella-top1m-cache`](https://github.com/wangmm001/umbrella-top1m-cache) | `https://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip` |
 | Tranco Top 1M | [`wangmm001/tranco-top1m-cache`](https://github.com/wangmm001/tranco-top1m-cache) | `https://tranco-list.eu/` |
 | Cloudflare Radar rank buckets | [`wangmm001/cloudflare-radar-rankings-cache`](https://github.com/wangmm001/cloudflare-radar-rankings-cache) | Cloudflare Radar API `/radar/datasets/ranking_top_<N>` |
+| Majestic Million | [`wangmm001/majestic-million-cache`](https://github.com/wangmm001/majestic-million-cache) | `https://downloads.majestic.com/majestic_million.csv` |
 
 One companion repo is a **strict GitHub fork mirror** (not populated by this code — it just replays an upstream repo):
 
