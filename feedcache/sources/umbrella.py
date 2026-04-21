@@ -1,3 +1,4 @@
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -15,7 +16,8 @@ def run(out_dir: str) -> bool:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    zip_path = out / ".download.zip"
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+        zip_path = Path(tmp.name)
     try:
         download_to(UPSTREAM_URL, zip_path)
         with zipfile.ZipFile(zip_path) as zf:

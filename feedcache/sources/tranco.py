@@ -37,7 +37,7 @@ def run(out_dir: str) -> bool:
 
     date = today_utc_date()
     deterministic_gzip(csv_bytes, out / f"{date}_{version_id}.csv.gz")
-    (out / f"{date}.version.txt").write_text(version_id + "\n")
+    write_if_changed((version_id + "\n").encode(), out / f"{date}.version.txt")
     update_current(out, "????-??-??_*.csv.gz", "current.csv.gz")
     write_if_changed((version_id + "\n").encode(), current_version_file)
     return True
