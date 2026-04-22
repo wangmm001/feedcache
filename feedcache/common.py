@@ -1,5 +1,6 @@
 import fnmatch
 import gzip
+import lzma
 import os
 import shutil
 from datetime import datetime, timezone
@@ -14,6 +15,17 @@ def today_utc_date() -> str:
 
 def deterministic_gzip(src_bytes: bytes, dest: Path) -> None:
     data = gzip.compress(src_bytes, compresslevel=9, mtime=0)
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, dest)
+
+
+def deterministic_xz(src_bytes: bytes, dest: Path, preset: int = 6) -> None:
+    data = lzma.compress(
+        src_bytes, format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=preset
+    )
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".tmp")

@@ -1,5 +1,5 @@
-import gzip
 import io
+import lzma
 import zipfile
 from pathlib import Path
 
@@ -71,12 +71,12 @@ def test_domcop_first_run_writes_snapshot_and_lastmod(tmp_path, monkeypatch):
     assert "If-Modified-Since" not in captured["headers"]
 
     names = sorted(p.name for p in tmp_path.iterdir())
-    assert "current.csv.gz" in names
+    assert "current.csv.xz" in names
     assert "current.last-modified.txt" in names
-    dated = [n for n in names if n.endswith(".csv.gz") and n != "current.csv.gz"]
+    dated = [n for n in names if n.endswith(".csv.xz") and n != "current.csv.xz"]
     assert len(dated) == 1, names
 
-    assert gzip.decompress((tmp_path / "current.csv.gz").read_bytes()) == _FAKE_CSV
+    assert lzma.decompress((tmp_path / "current.csv.xz").read_bytes()) == _FAKE_CSV
     assert (tmp_path / "current.last-modified.txt").read_text().strip() == (
         "Sun, 29 Mar 2026 11:30:31 GMT"
     )
@@ -124,7 +124,7 @@ def test_domcop_refreshes_when_upstream_changes(tmp_path, monkeypatch):
         "Sun, 29 Mar 2026 11:30:31 GMT"
     )
 
-    assert gzip.decompress((tmp_path / "current.csv.gz").read_bytes()) == new_csv
+    assert lzma.decompress((tmp_path / "current.csv.xz").read_bytes()) == new_csv
     assert (tmp_path / "current.last-modified.txt").read_text().strip() == (
         "Mon, 29 Jun 2026 09:00:00 GMT"
     )

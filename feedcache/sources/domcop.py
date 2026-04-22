@@ -5,7 +5,7 @@ from pathlib import Path
 import requests
 
 from feedcache.common import (
-    deterministic_gzip,
+    deterministic_xz,
     today_utc_date,
     update_current,
     write_if_changed,
@@ -55,8 +55,8 @@ def run(out_dir: str) -> bool:
             zip_path.unlink(missing_ok=True)
 
     date = today_utc_date()
-    deterministic_gzip(csv_bytes, out / f"{date}.csv.gz")
-    update_current(out, "????-??-??.csv.gz", "current.csv.gz")
+    deterministic_xz(csv_bytes, out / f"{date}.csv.xz")
+    update_current(out, "????-??-??.csv.xz", "current.csv.xz")
 
     if new_lastmod:
         write_if_changed(

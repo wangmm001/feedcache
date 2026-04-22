@@ -1,8 +1,9 @@
 import gzip
+import lzma
 import re
 from unittest.mock import MagicMock
 
-from feedcache.common import deterministic_gzip, download_to, today_utc_date, update_current, write_if_changed
+from feedcache.common import deterministic_gzip, deterministic_xz, download_to, today_utc_date, update_current, write_if_changed
 
 
 def test_today_utc_date_format():
@@ -19,6 +20,16 @@ def test_deterministic_gzip_same_input_same_output(tmp_path):
     deterministic_gzip(data, b)
     assert a.read_bytes() == b.read_bytes(), "byte-identical output required"
     assert gzip.decompress(a.read_bytes()) == data
+
+
+def test_deterministic_xz_same_input_same_output(tmp_path):
+    data = b"rank,domain\n1,google.com\n2,youtube.com\n"
+    a = tmp_path / "a.xz"
+    b = tmp_path / "b.xz"
+    deterministic_xz(data, a)
+    deterministic_xz(data, b)
+    assert a.read_bytes() == b.read_bytes(), "byte-identical output required"
+    assert lzma.decompress(a.read_bytes()) == data
 
 
 def test_write_if_changed_writes_new(tmp_path):
